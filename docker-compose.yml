@@ -1,0 +1,26 @@
+services:
+  # ---- Backend API ----
+  backend:
+    build: ./backend
+    container_name: login-api
+    ports:
+      - "5000:5000"
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  # ---- Frontend (Nginx) ----
+  frontend:
+    build: ./frontend
+    container_name: login-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
