@@ -1,0 +1,57 @@
+name: Deploy Login App to Server
+
+on:
+  push:
+    branches:
+
+      - dev
+
+jobs:
+  deploy:
+    name: Deploy to Remote Server
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up SSH key
+        run: |
+          mkdir -p "$HOME/.ssh"
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > "$HOME/.ssh/id_rsa"
+          chmod 600 "$HOME/.ssh/id_rsa"
+          ssh-keyscan -p "${{ secrets.SERVER_PORT }}" -H "${{ secrets.SERVER_HOST }}" >> "$HOME/.ssh/known_hosts"
+
+      - name: Test SSH connectivity
+        run: nc -zv "${{ secrets.SERVER_HOST }}" "${{ secrets.SERVER_PORT }}"
+
+      - name: Copy project files to server
+        run: |
+          scp -P "${{ secrets.SERVER_PORT }}" -i "$HOME/.ssh/id_rsa" \
+            -r backend frontend docker-compose.yml \
+            "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:${{ secrets.DEPLOY_PATH }}/"
+
+      - name: Deploy on server
+        run: |
+          ssh -p "${{ secrets.SERVER_PORT }}" -i "$HOME/.ssh/id_rsa" \
+            "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}" << 'EOF'
+          set -e
+          cd "${{ secrets.DEPLOY_PATH }}"
+
+          echo "==> Ensuring Docker network exists..."
+          docker network create validator-net || true
+
+          echo "==> Pulling latest Docker images..."
+          docker compose pull
+
+          echo "==> Restarting services..."
+          docker compose up -d --remove-orphans
+
+          echo "==> Deployment complete!"
+          EOF
+
+      - name: Verify deployment
+        run: |
+          ssh -p "${{ secrets.SERVER_PORT }}" -i "$HOME/.ssh/id_rsa" \
+            "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}" \
+            "cd '${{ secrets.DEPLOY_PATH }}' && docker compose ps"
