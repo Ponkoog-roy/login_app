@@ -1,15 +1,13 @@
 services:
-  # ---- Backend API ----
   backend:
     build: ./backend
     container_name: login-api
     ports:
-      - "5000:5000"
+      - "8080:8080"
     restart: unless-stopped
     networks:
       - app-network
 
-  # ---- Frontend (Nginx) ----
   frontend:
     build: ./frontend
     container_name: login-frontend

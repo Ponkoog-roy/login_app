@@ -3,55 +3,90 @@ const cors = require('cors');
 const jwt = require('jsonwebtoken');
 
 const app = express();
-const PORT = 5000;
+const PORT = 8080;
 const JWT_SECRET = 'super-secret-key-change-in-production';
 
-// --- Hardcoded users for demo ---
+// Demo users
 const USERS = [
-  { id: 1, username: 'admin', password: 'password123', role: 'Administrator' },
-  { id: 2, username: 'user',  password: 'user123',     role: 'Standard User' }
+  {
+    id: 1,
+    username: 'admin',
+    password: 'password123',
+    role: 'Administrator'
+  },
+  {
+    id: 2,
+    username: 'user',
+    password: 'user123',
+    role: 'Standard User'
+  }
 ];
 
-// --- Middleware ---
+// Middleware
 app.use(cors());
 app.use(express.json());
 
-// Request logger
 app.use((req, _res, next) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
   next();
 });
 
-// --- Auth middleware ---
+// Auth middleware
 function authenticate(req, res, next) {
   const authHeader = req.headers.authorization;
+
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Missing or invalid token' });
+    return res.status(401).json({
+      error: 'Missing or invalid token'
+    });
   }
 
   const token = authHeader.split(' ')[1];
+
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
     req.user = decoded;
     next();
   } catch (err) {
-    return res.status(401).json({ error: 'Token expired or invalid' });
+    return res.status(401).json({
+      error: 'Token expired or invalid'
+    });
   }
 }
 
-// ==================== ROUTES ====================
+// ==================================================
+// Assessment Required Endpoints
+// ==================================================
 
-// Health check
-app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+app.get('/', (_req, res) => {
+  res.send('Application is running');
 });
 
-// POST /api/login
+app.get('/health', (_req, res) => {
+  res.json({
+    status: 'ok'
+  });
+});
+
+// ==================================================
+// Application Endpoints
+// ==================================================
+
+app.get('/api/health', (_req, res) => {
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Login
 app.post('/api/login', (req, res) => {
   const { username, password } = req.body;
 
   if (!username || !password) {
-    return res.status(400).json({ error: 'Username and password are required' });
+    return res.status(400).json({
+      error: 'Username and password are required'
+    });
   }
 
   const user = USERS.find(
@@ -59,40 +94,47 @@ app.post('/api/login', (req, res) => {
   );
 
   if (!user) {
-    return res.status(401).json({ error: 'Invalid username or password' });
+    return res.status(401).json({
+      error: 'Invalid username or password'
+    });
   }
 
   const token = jwt.sign(
-    { id: user.id, username: user.username, role: user.role },
+    {
+      id: user.id,
+      username: user.username,
+      role: user.role
+    },
     JWT_SECRET,
-    { expiresIn: '1h' }
+    {
+      expiresIn: '1h'
+    }
   );
-
-  console.log(`✅ User "${user.username}" logged in`);
 
   res.json({
     message: 'Login successful',
     token,
-    user: { id: user.id, username: user.username, role: user.role }
+    user: {
+      id: user.id,
+      username: user.username,
+      role: user.role
+    }
   });
 });
 
-// GET /api/me  (protected)
+// Current user
 app.get('/api/me', authenticate, (req, res) => {
+  res.json(req.user);
+});
+
+// Logout
+app.post('/api/logout', authenticate, (_req, res) => {
   res.json({
-    id: req.user.id,
-    username: req.user.username,
-    role: req.user.role
+    message: 'Logged out successfully'
   });
 });
 
-// POST /api/logout  (stateless — just acknowledge)
-app.post('/api/logout', authenticate, (req, res) => {
-  console.log(`🚪 User "${req.user.username}" logged out`);
-  res.json({ message: 'Logged out successfully' });
-});
-
-// ==================== START ====================
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Backend API running on http://0.0.0.0:${PORT}`);
+// Start server
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });
