@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
       - name: frontend
-        image: docker.io/ponkoog/login_front:v1   # not 'latest'
+        image: ponkoog/login_front:v4   # not 'latest'
         ports:
         - containerPort: 80
         resources:
