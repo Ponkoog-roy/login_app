@@ -20,14 +20,14 @@ jobs:
 
       - name: Install frontend dependencies
         run: test -f frontend/index.html
-        echo "Frontend files verified"
+          echo "Frontend files verified"
 
       - name: Run backend tests
         run: cd backend && npm test
 
       - name: RMock frontend tests
         run: |
-         echo "No frontend test framework configured"
+          echo "No frontend test framework configured"
 
       - name: Build frontend Docker image
         run: docker build -t ${{ secrets.REGISTRY_URL }}/login_app/frontend:latest ./frontend
