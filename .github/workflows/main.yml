@@ -3,7 +3,7 @@ name: Deploy Login App to Server
 on:
   push:
     branches:
-
+      - main
       - dev
 
 jobs:
