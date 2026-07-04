@@ -18,8 +18,8 @@ Application Load Balancer (via Ingress)
 |  Backend Pods      |
 +-------|------------+
         |
-        | Private VPC network only
-        | (SG: port 5432 from EKS node SG)
+        |  Private VPC network only
+        |  (SG: port 5432 from EKS node SG)
         |
 +--------------------+
 |  AWS RDS PostgreSQL |

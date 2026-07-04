@@ -100,7 +100,7 @@ jobs:
           sed -i "s|image: .*|image: ${{ secrets.REGISTRY_URL }}/${{ secrets.REGISTRY_USER }}/login_app-frontend:${{ github.sha }}|" k8s/frontend-deployment.yaml
 
      # - name: Deploy to Kubernetes
-       #if: steps.cluster.outputs.mock == 'false'
+       # if: steps.cluster.outputs.mock == 'false'
         #run: |
          # kubectl apply -f k8s/backend-configmap.yaml
           #kubectl apply -f k8s/backend-secret-example.yaml
