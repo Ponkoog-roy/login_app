@@ -6,27 +6,8 @@ with no public exposure. The implementation lives in
 `terraform/modules/eks/` — this doc is the plain-English explanation the
 assessment asks for.
 
-Internet
-    |
-Application Load Balancer (via Ingress)
-    |
-+-------------------+
-|        EKS        |
-|                    |
-|  Frontend Pods     |
-|       |            |
-|  Backend Pods      |
-+-------|------------+
-        |
-        |  Private VPC network only
-        |  (SG: port 5432 from EKS node SG)
-        |
-+--------------------+
-|  AWS RDS PostgreSQL |
-|  (private subnet,   |
-|   publicly_accessible|
-|   = false)          |
-+--------------------+
+Internet --->Application Load Balancer (via Ingress) ---> | EKS , Frontend Pods , Backend Pods | ----priveate vpc network only'SG:port from EKS---> WS RDS PostgreSQL |(private subnet,   |publicly_accessible| = false)
+
 
 ## 1. How AKS/EKS connects privately to the database
 
