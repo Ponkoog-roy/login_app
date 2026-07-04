@@ -88,11 +88,11 @@ jobs:
             echo "mock=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Set up kubeconfig
-        if: steps.cluster.outputs.mock == 'false'
-        run: |
-          mkdir -p "$HOME/.kube"
-          echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > "$HOME/.kube/config"
+      #- name: Set up kubeconfig
+      #  if: steps.cluster.outputs.mock == 'false'
+       # run: |
+        #  mkdir -p "$HOME/.kube"
+         # echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > "$HOME/.kube/config"
 
       - name: Set image tags in manifests
         if: steps.cluster.outputs.mock == 'false'
