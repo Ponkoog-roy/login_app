@@ -72,52 +72,58 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   deploy:
-    name: Deploy to Remote Server
+    name: Deploy to Kubernetes
     runs-on: ubuntu-latest
     needs: release
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up SSH key
+      - name: Check for cluster credentials
+        id: cluster
         run: |
-          mkdir -p "$HOME/.ssh"
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > "$HOME/.ssh/id_rsa"
-          chmod 600 "$HOME/.ssh/id_rsa"
-          ssh-keyscan -p "${{ secrets.SERVER_PORT }}" -H "${{ secrets.SERVER_HOST }}" >> "$HOME/.ssh/known_hosts"
+          if [ -n "${{ secrets.KUBE_CONFIG }}" ]; then
+            echo "mock=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "mock=true" >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: Test SSH connectivity
-        run: nc -zv "${{ secrets.SERVER_HOST }}" "${{ secrets.SERVER_PORT }}"
-
-      - name: Copy project files to server
+      - name: Set up kubeconfig
+        if: steps.cluster.outputs.mock == 'false'
         run: |
-          scp -P "${{ secrets.SERVER_PORT }}" -i "$HOME/.ssh/id_rsa" \
-          -r backend frontend docker-compose.yml \
-          "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:${{ secrets.DEPLOY_PATH }}/"
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > "$HOME/.kube/config"
 
-      - name: Deploy on server (Docker Compose)
+      - name: Set image tags in manifests
+        if: steps.cluster.outputs.mock == 'false'
         run: |
-          ssh -p "${{ secrets.SERVER_PORT }}" -i "$HOME/.ssh/id_rsa" \
-          "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}" << 'EOF'
-          set -e
-          cd "${{ secrets.DEPLOY_PATH }}"
-          echo "==> Ensuring Docker network exists..."
-          docker network create validator-net || true
-          echo "==> Building and restarting services..."
-          docker compose up -d --build --remove-orphans
-          echo "==> Deployment complete!"
-          EOF
+          sed -i "s|image: .*|image: ${{ secrets.REGISTRY_URL }}/${{ secrets.REGISTRY_USER }}/login_app-backend:${{ github.sha }}|" k8s/backend-deployment.yaml
+          sed -i "s|image: .*|image: ${{ secrets.REGISTRY_URL }}/${{ secrets.REGISTRY_USER }}/login_app-frontend:${{ github.sha }}|" k8s/frontend-deployment.yaml
 
-      - name: Verify deployment
+      - name: Deploy to Kubernetes
+        if: steps.cluster.outputs.mock == 'false'
         run: |
-          ssh -p "${{ secrets.SERVER_PORT }}" -i "$HOME/.ssh/id_rsa" \
-          "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}" \
-          "cd '${{ secrets.DEPLOY_PATH }}' && docker compose ps"
+          kubectl apply -f k8s/backend-configmap.yaml
+          kubectl apply -f k8s/backend-secret-example.yaml
+          kubectl apply -f k8s/backend-deployment.yaml
+          kubectl apply -f k8s/backend-service.yaml
+          kubectl apply -f k8s/frontend-deployment.yaml
+          kubectl apply -f k8s/frontend-service.yaml
+          kubectl apply -f k8s/ingress.yaml
+          kubectl rollout status deployment/login-backend --timeout=120s
+          kubectl rollout status deployment/login-frontend --timeout=120s
 
-      - name: Mock Kubernetes deploy
+      - name: Mock deploy to Kubernetes (no cluster configured)
+        if: steps.cluster.outputs.mock == 'true'
         run: |
-          test -f k8s/backend-deployment.yaml
-          test -f k8s/frontend-deployment.yaml
-          test -f k8s/frontend-service.yaml
-          test -f k8s/ingress.yaml
-          echo "Kubernetes manifests validated"
+          echo "No cluster configured (secrets.KUBE_CONFIG is empty)."
+          echo "Validating manifests that would be applied:"
+          for f in k8s/backend-configmap.yaml k8s/backend-secret-example.yaml \
+                   k8s/backend-deployment.yaml k8s/backend-service.yaml \
+                   k8s/frontend-deployment.yaml k8s/frontend-service.yaml \
+                   k8s/ingress.yaml; do
+            test -f "$f" && echo "  OK  $f (would: kubectl apply -f $f)" || (echo "  MISSING  $f" && exit 1)
+          done
+          echo "Would deploy backend image:  ${{ secrets.REGISTRY_URL }}/${{ secrets.REGISTRY_USER }}/login_app-backend:${{ github.sha }}"
+          echo "Would deploy frontend image: ${{ secrets.REGISTRY_URL }}/${{ secrets.REGISTRY_USER }}/login_app-frontend:${{ github.sha }}"
+          echo "Set repo secret KUBE_CONFIG (base64-encoded kubeconfig) to deploy for real."
