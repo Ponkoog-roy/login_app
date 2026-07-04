@@ -1,4 +1,4 @@
-name: CI/CD Pipeline - Login App
+name: CI/CD Pipeline - Login App  ##2.0
 
 on:
   push:
@@ -19,7 +19,8 @@ jobs:
         run: cd backend && npm install
 
       - name: Install frontend dependencies
-        run: test -f frontend/index.html
+        run: |
+          test -f frontend/index.html
           echo "Frontend files verified"
 
       - name: Run backend tests
