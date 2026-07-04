@@ -100,18 +100,18 @@ jobs:
           sed -i "s|image: .*|image: ${{ secrets.REGISTRY_URL }}/${{ secrets.REGISTRY_USER }}/login_app-backend:${{ github.sha }}|" k8s/backend-deployment.yaml
           sed -i "s|image: .*|image: ${{ secrets.REGISTRY_URL }}/${{ secrets.REGISTRY_USER }}/login_app-frontend:${{ github.sha }}|" k8s/frontend-deployment.yaml
 
-      - name: Deploy to Kubernetes
-        if: steps.cluster.outputs.mock == 'false'
-        run: |
-          kubectl apply -f k8s/backend-configmap.yaml
-          kubectl apply -f k8s/backend-secret-example.yaml
-          kubectl apply -f k8s/backend-deployment.yaml
-          kubectl apply -f k8s/backend-service.yaml
-          kubectl apply -f k8s/frontend-deployment.yaml
-          kubectl apply -f k8s/frontend-service.yaml
-          kubectl apply -f k8s/ingress.yaml
-          kubectl rollout status deployment/login-backend --timeout=120s
-          kubectl rollout status deployment/login-frontend --timeout=120s
+     # - name: Deploy to Kubernetes
+       #if: steps.cluster.outputs.mock == 'false'
+        #run: |
+         # kubectl apply -f k8s/backend-configmap.yaml
+          #kubectl apply -f k8s/backend-secret-example.yaml
+          #kubectl apply -f k8s/backend-deployment.yaml
+          #kubectl apply -f k8s/backend-service.yaml
+          #kubectl apply -f k8s/frontend-deployment.yaml
+          #kubectl apply -f k8s/frontend-service.yaml
+          #kubectl apply -f k8s/ingress.yaml
+         # kubectl rollout status deployment/login-backend --timeout=120s
+         # kubectl rollout status deployment/login-frontend --timeout=120s
 
       - name: Mock deploy to Kubernetes (no cluster configured)
         if: steps.cluster.outputs.mock == 'true'
