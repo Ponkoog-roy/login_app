@@ -30,24 +30,24 @@ jobs:
           echo "No frontend test framework configured"
 
       - name: Build frontend Docker image
-        run: docker build -t ${{ secrets.REGISTRY_URL }}/login_app/frontend:latest ./frontend
+        run: docker build -t ${{ secrets.REGISTRY_URL }}/${{ secrets.REGISTRY_USER }}/login_app-frontend:latest ./frontend
 
       - name: Build backend Docker image
-        run: docker build -t ${{ secrets.REGISTRY_URL }}/login_app/backend:latest ./backend
+        run: docker build -t ${{ secrets.REGISTRY_URL }}/${{ secrets.REGISTRY_USER }}/login_app-backend:latest ./backend
 
       - name: Tag Docker images
         run: |
           echo "Tagging images with commit SHA..."
-          docker tag ${{ secrets.REGISTRY_URL }}/login_app/frontend:latest ${{ secrets.REGISTRY_URL }}/login_app/frontend:${{ github.sha }}
-          docker tag ${{ secrets.REGISTRY_URL }}/login_app/backend:latest ${{ secrets.REGISTRY_URL }}/login_app/backend:${{ github.sha }}
+          docker tag ${{ secrets.REGISTRY_URL }}/${{ secrets.REGISTRY_USER }}/login_app-frontend:latest ${{ secrets.REGISTRY_URL }}/${{ secrets.REGISTRY_USER }}/login_app-frontend:${{ github.sha }}
+          docker tag ${{ secrets.REGISTRY_URL }}/${{ secrets.REGISTRY_USER }}/login_app-backend:latest ${{ secrets.REGISTRY_URL }}/${{ secrets.REGISTRY_USER }}/login_app-backend:${{ github.sha }}
 
       - name: Log in to Docker registry
         run: echo "${{ secrets.REGISTRY_PASSWORD }}" | docker login ${{ secrets.REGISTRY_URL }} -u ${{ secrets.REGISTRY_USER }} --password-stdin
 
       - name: Push Docker images
         run: |
-          docker push ${{ secrets.REGISTRY_URL }}/login_app/frontend:${{ github.sha }}
-          docker push ${{ secrets.REGISTRY_URL }}/login_app/backend:${{ github.sha }}
+          docker push ${{ secrets.REGISTRY_URL }}/${{ secrets.REGISTRY_USER }}/login_app-frontend:${{ github.sha }}
+          docker push ${{ secrets.REGISTRY_URL }}/${{ secrets.REGISTRY_USER }}/login_app-backend:${{ github.sha }}
 
   release:
     name: Create GitHub Release
