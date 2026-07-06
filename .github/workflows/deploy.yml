@@ -1,128 +1,153 @@
-name: CI/CD Pipeline - Login App ##2.0111
+name: CI/CD Pipeline - Login App
 
 on:
   push:
     branches:
       - main
+      - dev
 
 permissions:
-  contents: write   # Required for creating releases
+  contents: write
+  id-token: write
+
+env:
+  AWS_REGION: us-east-1
+  EKS_CLUSTER_NAME: login-app-cluster
 
 jobs:
-  build-and-test:
-    name: Build & Test
+
+  build-test-push:
+    name: Build Test Push
     runs-on: ubuntu-latest
+
+    outputs:
+      image_tag: ${{ steps.vars.outputs.image_tag }}
+
     steps:
-      - name: Checkout repository
+
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Install backend dependencies
-        run: cd backend && npm install
+      - name: Generate Image Tag
+        id: vars
+        run: |
+          echo "image_tag=sha-$(echo $GITHUB_SHA | cut -c1-7)" >> $GITHUB_OUTPUT
 
-      - name: Install frontend dependencies
+      - name: Setup NodeJS
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Backend Dependencies
+        run: |
+          cd backend
+          npm install
+
+      - name: Run Backend Tests
+        run: |
+          cd backend
+          npm test
+
+      - name: Verify Frontend Files
         run: |
           test -f frontend/index.html
-          echo "Frontend files verified"
 
-      - name: Run backend tests
-        run: cd backend && npm test
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
 
-      - name: Mock frontend tests
+      - name: Login to Amazon ECR Public
         run: |
-          echo "No frontend test framework configured"
+          aws ecr-public get-login-password \
+          --region us-east-1 | \
+          docker login \
+          --username AWS \
+          --password-stdin public.ecr.aws
 
-      - name: Build frontend Docker image
-        run: docker build -t ${{ secrets.REGISTRY_URL }}/${{ secrets.REGISTRY_USER }}/login_app-frontend:latest ./frontend
-
-      - name: Build backend Docker image
-        run: docker build -t ${{ secrets.REGISTRY_URL }}/${{ secrets.REGISTRY_USER }}/login_app-backend:latest ./backend
-
-      - name: Tag Docker images
+      - name: Build Backend Image
         run: |
-          echo "Tagging images with commit SHA..."
-          docker tag ${{ secrets.REGISTRY_URL }}/${{ secrets.REGISTRY_USER }}/login_app-frontend:latest ${{ secrets.REGISTRY_URL }}/${{ secrets.REGISTRY_USER }}/login_app-frontend:${{ github.sha }}
-          docker tag ${{ secrets.REGISTRY_URL }}/${{ secrets.REGISTRY_USER }}/login_app-backend:latest ${{ secrets.REGISTRY_URL }}/${{ secrets.REGISTRY_USER }}/login_app-backend:${{ github.sha }}
+          docker build \
+            -t public.ecr.aws/${{ secrets.ECR_PUBLIC_ALIAS }}/login_app-backend:${{ steps.vars.outputs.image_tag }} \
+            ./backend
 
-      - name: Log in to Docker registry
-        run: echo "${{ secrets.REGISTRY_PASSWORD }}" | docker login ${{ secrets.REGISTRY_URL }} -u ${{ secrets.REGISTRY_USER }} --password-stdin
-
-      - name: Push Docker images
+      - name: Build Frontend Image
         run: |
-          docker push ${{ secrets.REGISTRY_URL }}/${{ secrets.REGISTRY_USER }}/login_app-frontend:${{ github.sha }}
-          docker push ${{ secrets.REGISTRY_URL }}/${{ secrets.REGISTRY_USER }}/login_app-backend:${{ github.sha }}
+          docker build \
+            -t public.ecr.aws/${{ secrets.ECR_PUBLIC_ALIAS }}/login_app-frontend:${{ steps.vars.outputs.image_tag }} \
+            ./frontend
+
+      - name: Push Backend Image
+        run: |
+          docker push \
+            public.ecr.aws/${{ secrets.ECR_PUBLIC_ALIAS }}/login_app-backend:${{ steps.vars.outputs.image_tag }}
+
+      - name: Push Frontend Image
+        run: |
+          docker push \
+            public.ecr.aws/${{ secrets.ECR_PUBLIC_ALIAS }}/login_app-frontend:${{ steps.vars.outputs.image_tag }}
 
   release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
-    needs: build-and-test
+    needs: build-test-push
+
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: release-${{ github.sha }}   # ✅ valid tag name
-          name: "Release ${{ github.sha }}"
-          body: "Automated release from CI/CD pipeline"
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          tag_name: release-${{ needs.build-test-push.outputs.image_tag }}
+          name: Release ${{ needs.build-test-push.outputs.image_tag }}
+          generate_release_notes: true
 
   deploy:
-    name: Deploy to Kubernetes
+    name: Deploy To EKS
     runs-on: ubuntu-latest
-    needs: release
+    needs:
+      - build-test-push
+      - release
+
     steps:
-      - name: Checkout repository
+
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Check for cluster credentials
-        id: cluster
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Configure kubectl for EKS
         run: |
-          if [ -n "${{ secrets.KUBE_CONFIG }}" ]; then
-            echo "mock=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "mock=true" >> "$GITHUB_OUTPUT"
-          fi
+          aws eks update-kubeconfig \
+          --region us-east-1 \
+          --name ${EKS_CLUSTER_NAME}
 
-      #- name: Set up kubeconfig
-      #  if: steps.cluster.outputs.mock == 'false'
-       # run: |
-        #  mkdir -p "$HOME/.kube"
-         # echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > "$HOME/.kube/config"
-
-      - name: Set image tags in manifests
-        if: steps.cluster.outputs.mock == 'false'
+      - name: Replace Image Tags
         run: |
-          sed -i "s|image: .*|image: ${{ secrets.REGISTRY_URL }}/${{ secrets.REGISTRY_USER }}/login_app-backend:${{ github.sha }}|" k8s/backend-deployment.yaml
-          sed -i "s|image: .*|image: ${{ secrets.REGISTRY_URL }}/${{ secrets.REGISTRY_USER }}/login_app-frontend:${{ github.sha }}|" k8s/frontend-deployment.yaml
+          sed -i "s|IMAGE_TAG_PLACEHOLDER|${{ needs.build-test-push.outputs.image_tag }}|g" k8s/backend-deployment.yaml
 
-     # - name: Deploy to Kubernetes
-       # if: steps.cluster.outputs.mock == 'false'
-        #run: |
-         # kubectl apply -f k8s/backend-configmap.yaml
-          #kubectl apply -f k8s/backend-secret-example.yaml
-          #kubectl apply -f k8s/backend-deployment.yaml
-          #kubectl apply -f k8s/backend-service.yaml
-          #kubectl apply -f k8s/frontend-deployment.yaml
-          #kubectl apply -f k8s/frontend-service.yaml
-          #kubectl apply -f k8s/ingress.yaml
-         # kubectl rollout status deployment/login-backend --timeout=120s
-         # kubectl rollout status deployment/login-frontend --timeout=120s
+          sed -i "s|IMAGE_TAG_PLACEHOLDER|${{ needs.build-test-push.outputs.image_tag }}|g" k8s/frontend-deployment.yaml
 
-      - name: Mock deploy to Kubernetes (no cluster configured)
-        if: steps.cluster.outputs.mock == 'true'
+      - name: Deploy Kubernetes Manifests
         run: |
-          echo "No cluster configured (secrets.KUBE_CONFIG is empty)."
-          echo "Validating manifests that would be applied:"
-          for f in k8s/backend-configmap.yaml k8s/backend-secret-example.yaml \
-                   k8s/backend-deployment.yaml k8s/backend-service.yaml \
-                   k8s/frontend-deployment.yaml k8s/frontend-service.yaml \
-                   k8s/ingress.yaml; do
-            test -f "$f" && echo "  OK  $f (would: kubectl apply -f $f)" || (echo "  MISSING  $f" && exit 1)
-          done
-          echo "Would deploy backend image:  ${{ secrets.REGISTRY_URL }}/${{ secrets.REGISTRY_USER }}/login_app-backend:${{ github.sha }}"
-          echo "Would deploy frontend image: ${{ secrets.REGISTRY_URL }}/${{ secrets.REGISTRY_USER }}/login_app-frontend:${{ github.sha }}"
-          echo "Set repo secret KUBE_CONFIG (base64-encoded kubeconfig) to deploy for real."
+          kubectl apply -f k8s/backend-configmap.yaml
+          kubectl apply -f k8s/backend-secret-example.yaml
+          kubectl apply -f k8s/backend-deployment.yaml
+          kubectl apply -f k8s/backend-service.yaml
+          kubectl apply -f k8s/frontend-deployment.yaml
+          kubectl apply -f k8s/frontend-service.yaml
+          kubectl apply -f k8s/ingress.yaml
+
+      - name: Verify Backend Rollout
+        run: |
+          kubectl rollout status deployment/login-backend --timeout=300s
+
+      - name: Verify Frontend Rollout
+        run: |
+          kubectl rollout status deployment/login-frontend --timeout=300s
